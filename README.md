@@ -109,3 +109,7 @@ sudo systemctl restart ovh-notifier   # restart
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md).
+
+## Credits
+
+Inspired by [Monitor OVHcloud VPS Plans Availability with Python and Telegram on Raspberry Pi](https://taihoang.com/articles/monitor-ovhcloud-vps-plans-availability-with-python-and-telegram-on-raspberry-pi/) by [Tài Hoàng](https://taihoang.com).
