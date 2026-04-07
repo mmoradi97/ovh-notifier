@@ -1,5 +1,9 @@
 # OVH VPS Notifier
 
+[![Lint](https://github.com/mmoradi97/ovh-notifier/actions/workflows/lint.yml/badge.svg)](https://github.com/mmoradi97/ovh-notifier/actions/workflows/lint.yml)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 A lightweight Python script that polls the OVH API and sends a **Telegram alert** when a specific VPS plan becomes available in your chosen datacenters.
 
 ## How it works
