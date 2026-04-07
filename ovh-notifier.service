@@ -1,0 +1,17 @@
+[Unit]
+Description=OVH VPS Availability Notifier
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/ovh-notifier
+ExecStart=/root/ovh-notifier/.venv/bin/python3 /root/ovh-notifier/checker.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
