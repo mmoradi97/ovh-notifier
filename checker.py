@@ -53,9 +53,15 @@ def save_state():
     try:
         with open(tmp, "w") as f:
             json.dump(last_status, f)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp, STATE_FILE)
     except Exception as e:
         log(f"WARNING: could not save state: {e}")
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
 
 
 def with_retry(fn, *args, retries=3, backoff=5, **kwargs):
@@ -84,14 +90,17 @@ def telegram_notify(message: str, dry_run: bool = False):
 
 
 def fetch_statuses() -> dict[str, dict]:
-    r = with_retry(
-        requests.get,
-        OVH_API_URL,
-        params={"ovhSubsidiary": OVH_SUBSIDIARY, "planCode": PLAN_CODE},
-        headers={"User-Agent": "ovh-vps-notifier/1.2"},
-        timeout=15,
-    )
-    r.raise_for_status()
+    def _get():
+        r = requests.get(
+            OVH_API_URL,
+            params={"ovhSubsidiary": OVH_SUBSIDIARY, "planCode": PLAN_CODE},
+            headers={"User-Agent": "ovh-vps-notifier/1.2"},
+            timeout=15,
+        )
+        r.raise_for_status()
+        return r
+
+    r = with_retry(_get)
 
     result = {}
     for dc in r.json().get("datacenters", []):

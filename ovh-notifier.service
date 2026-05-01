@@ -3,12 +3,20 @@ Description=OVH VPS Availability Notifier
 After=network-online.target
 Wants=network-online.target
 
-# Edit the three paths below to match your deployment directory and user
+# Deployment steps:
+#   sudo useradd -r -s /usr/sbin/nologin -d /opt/ovh-notifier ovh-notifier
+#   sudo mkdir -p /opt/ovh-notifier && sudo chown ovh-notifier: /opt/ovh-notifier
+#   # copy repo there, create .env, then:
+#   sudo cp ovh-notifier.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now ovh-notifier
+#
+# Edit the four paths/user below if you deploy to a different location.
 [Service]
 Type=simple
-User=root
-WorkingDirectory=/root/ovh-notifier
-ExecStart=/root/ovh-notifier/.venv/bin/python3 /root/ovh-notifier/checker.py
+User=ovh-notifier
+WorkingDirectory=/opt/ovh-notifier
+EnvironmentFile=/opt/ovh-notifier/.env
+ExecStart=/opt/ovh-notifier/.venv/bin/python3 /opt/ovh-notifier/checker.py
 Restart=always
 RestartSec=10
 StandardOutput=journal

@@ -9,7 +9,7 @@ A lightweight Python script that polls the OVH API and sends a **Telegram alert*
 
 ## How it works
 
-It queries the `ca.api.ovh.com/v1/vps/order/rule/datacenter` endpoint every N seconds and checks `linuxStatus` (and optionally `windowsStatus`) for each watched zone. When a zone transitions to `available`, you get a Telegram message with a direct link to the OVH configurator.
+It polls the OVH API (CA, EU, or US endpoint — configurable) every N seconds and checks `linuxStatus` (and optionally `windowsStatus`) for each watched zone. When a zone transitions to `available`, you get a Telegram message with a direct link to the OVH configurator. State is persisted across restarts so you won't get spurious alerts after a reboot.
 
 ## Setup
 
@@ -50,12 +50,27 @@ nohup .venv/bin/python3 checker.py > checker.log 2>&1 &
 
 **Option B — systemd service (recommended, survives reboots):**
 ```bash
-# Edit the service file if your path differs from /root/ovh-notifier
+# Create a dedicated non-root user and deploy directory
+sudo useradd -r -s /usr/sbin/nologin -d /opt/ovh-notifier ovh-notifier
+sudo mkdir -p /opt/ovh-notifier && sudo chown ovh-notifier: /opt/ovh-notifier
+
+# Copy repo files into place and create .env
+sudo cp -r . /opt/ovh-notifier/
+sudo cp .env.example /opt/ovh-notifier/.env
+sudo nano /opt/ovh-notifier/.env          # fill in your credentials
+sudo chown -R ovh-notifier: /opt/ovh-notifier
+
+# Create the virtualenv and install dependencies as the service user
+sudo -u ovh-notifier python3 -m venv /opt/ovh-notifier/.venv
+sudo -u ovh-notifier /opt/ovh-notifier/.venv/bin/pip install -r /opt/ovh-notifier/requirements.txt
+
+# Install and start the service
 sudo cp ovh-notifier.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable ovh-notifier
-sudo systemctl start ovh-notifier
+sudo systemctl enable --now ovh-notifier
 ```
+
+> If you deploy to a different path, edit the `User`, `WorkingDirectory`, `EnvironmentFile`, and `ExecStart` lines in the service file.
 
 **Foreground (test only):**
 ```bash
@@ -85,12 +100,14 @@ sudo systemctl restart ovh-notifier   # restart
 |---|---|---|
 | `PLAN_CODE` | OVH plan code (e.g. `vps-2025-model1`) | required |
 | `OVH_SUBSIDIARY` | OVH subsidiary (`WE`, `IE`, `PL`, etc.) | `WE` |
+| `OVH_API_ENDPOINT` | API region: `CA`, `EU`, `US`, or a full URL | `CA` |
 | `ZONES` | Comma-separated datacenter codes | required |
 | `CHECK_INTERVAL` | Poll interval in seconds | `180` |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token from @BotFather | required |
 | `TELEGRAM_CHAT_ID` | Your Telegram chat ID | required |
 | `ALERT_LINUX` | Alert when `linuxStatus` becomes available | `true` |
 | `ALERT_WINDOWS` | Alert when `windowsStatus` becomes available | `false` |
+| `STATE_FILE` | Path to persist zone status between restarts | `state.json` |
 
 ## Available zones
 

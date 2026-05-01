@@ -26,10 +26,10 @@ This is a single-file Python script (`checker.py`) with no framework. The flow i
 1. Config is loaded from `.env` via `python-dotenv` at startup.
 2. `main()` sends a Telegram startup message, then enters an infinite poll loop.
 3. Each iteration calls `fetch_statuses()` → hits the configured OVH API endpoint (`OVH_API_ENDPOINT`: CA/EU/US, default CA) with the plan and subsidiary, returns a dict keyed by zone name.
-4. `check_and_notify()` compares the current `linuxStatus`/`windowsStatus` to `last_status` (in-memory dict). Alerts fire only on transitions: unavailable→available (✅) and available→unavailable (❌). The first run silently seeds state with no alert.
+4. `check_and_notify()` compares the current `linuxStatus`/`windowsStatus` to `last_status` (dict loaded from `STATE_FILE`). Alerts fire only on transitions: unavailable→available (✅) and available→unavailable (❌). The first run silently seeds state with no alert.
 5. `telegram_notify()` posts to the Telegram Bot API.
 
-State is in-memory only — restarting the process re-seeds from the live API on the first poll (no alert on startup for existing availability).
+State is persisted to `STATE_FILE` (default `state.json`) via `load_state()`/`save_state()` using an atomic temp-file rename. Restarting the process restores prior state — no spurious alerts after restart.
 
 ## Configuration
 
@@ -37,4 +37,4 @@ Copy `.env.example` to `.env`. Required variables: `PLAN_CODE`, `ZONES`, `TELEGR
 
 ## Deployment
 
-The repo includes `ovh-notifier.service` for running as a systemd unit. Default path in the service file is `/root/ovh-notifier` — edit if deploying elsewhere.
+The repo includes `ovh-notifier.service` for running as a systemd unit. Default deployment path is `/opt/ovh-notifier` under a dedicated `ovh-notifier` system user — edit the service file if deploying elsewhere.
