@@ -20,7 +20,15 @@ ALERT_LINUX      = os.environ.get("ALERT_LINUX", "true").lower() == "true"
 ALERT_WINDOWS    = os.environ.get("ALERT_WINDOWS", "false").lower() == "true"
 STATE_FILE       = os.environ.get("STATE_FILE", "state.json")
 
-OVH_API_URL = "https://ca.api.ovh.com/v1/vps/order/rule/datacenter"
+# OVH API endpoints by region. CA is the default (works for most subsidiaries).
+# Set OVH_API_ENDPOINT in .env to override: CA, EU, US, or a full URL.
+_OVH_ENDPOINTS = {
+    "CA": "https://ca.api.ovh.com/v1/vps/order/rule/datacenter",
+    "EU": "https://eu.api.ovh.com/v1/vps/order/rule/datacenter",
+    "US": "https://api.us.ovhcloud.com/v1/vps/order/rule/datacenter",
+}
+_endpoint_env = os.environ.get("OVH_API_ENDPOINT", "CA")
+OVH_API_URL = _OVH_ENDPOINTS.get(_endpoint_env.upper(), _endpoint_env)
 
 # ── state ─────────────────────────────────────────────────────────────────────
 last_status: dict[str, str] = {}
@@ -41,9 +49,11 @@ def load_state():
 
 
 def save_state():
+    tmp = STATE_FILE + ".tmp"
     try:
-        with open(STATE_FILE, "w") as f:
+        with open(tmp, "w") as f:
             json.dump(last_status, f)
+        os.replace(tmp, STATE_FILE)
     except Exception as e:
         log(f"WARNING: could not save state: {e}")
 

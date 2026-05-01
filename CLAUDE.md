@@ -25,7 +25,7 @@ This is a single-file Python script (`checker.py`) with no framework. The flow i
 
 1. Config is loaded from `.env` via `python-dotenv` at startup.
 2. `main()` sends a Telegram startup message, then enters an infinite poll loop.
-3. Each iteration calls `fetch_statuses()` → hits `ca.api.ovh.com/v1/vps/order/rule/datacenter` with the configured plan and subsidiary, returns a dict keyed by zone name.
+3. Each iteration calls `fetch_statuses()` → hits the configured OVH API endpoint (`OVH_API_ENDPOINT`: CA/EU/US, default CA) with the plan and subsidiary, returns a dict keyed by zone name.
 4. `check_and_notify()` compares the current `linuxStatus`/`windowsStatus` to `last_status` (in-memory dict). Alerts fire only on transitions: unavailable→available (✅) and available→unavailable (❌). The first run silently seeds state with no alert.
 5. `telegram_notify()` posts to the Telegram Bot API.
 
