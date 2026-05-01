@@ -1,5 +1,8 @@
 import os
+import sys
+import json
 import time
+import argparse
 import requests
 from datetime import datetime
 from dotenv import load_dotenv
@@ -15,11 +18,11 @@ BOT_TOKEN        = os.environ["TELEGRAM_BOT_TOKEN"]
 CHAT_ID          = os.environ["TELEGRAM_CHAT_ID"]
 ALERT_LINUX      = os.environ.get("ALERT_LINUX", "true").lower() == "true"
 ALERT_WINDOWS    = os.environ.get("ALERT_WINDOWS", "false").lower() == "true"
+STATE_FILE       = os.environ.get("STATE_FILE", "state.json")
 
 OVH_API_URL = "https://ca.api.ovh.com/v1/vps/order/rule/datacenter"
 
 # ── state ─────────────────────────────────────────────────────────────────────
-# tracks last seen status per zone per os type: {"WAW_linux": "unavailable", ...}
 last_status: dict[str, str] = {}
 
 
@@ -27,7 +30,40 @@ def log(msg: str):
     print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} {msg}", flush=True)
 
 
-def telegram_notify(message: str):
+def load_state():
+    if os.path.exists(STATE_FILE):
+        try:
+            with open(STATE_FILE) as f:
+                last_status.update(json.load(f))
+            log(f"Loaded state from {STATE_FILE} ({len(last_status)} entries)")
+        except Exception as e:
+            log(f"WARNING: could not load state file: {e}")
+
+
+def save_state():
+    try:
+        with open(STATE_FILE, "w") as f:
+            json.dump(last_status, f)
+    except Exception as e:
+        log(f"WARNING: could not save state: {e}")
+
+
+def with_retry(fn, *args, retries=3, backoff=5, **kwargs):
+    for attempt in range(retries):
+        try:
+            return fn(*args, **kwargs)
+        except requests.exceptions.RequestException as e:
+            if attempt == retries - 1:
+                raise
+            wait = backoff * (2 ** attempt)
+            log(f"WARNING: {type(e).__name__}: {e} — retrying in {wait}s")
+            time.sleep(wait)
+
+
+def telegram_notify(message: str, dry_run: bool = False):
+    if dry_run:
+        log(f"[DRY RUN] Telegram: {message!r}")
+        return
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     r = requests.post(
         url,
@@ -38,7 +74,8 @@ def telegram_notify(message: str):
 
 
 def fetch_statuses() -> dict[str, dict]:
-    r = requests.get(
+    r = with_retry(
+        requests.get,
         OVH_API_URL,
         params={"ovhSubsidiary": OVH_SUBSIDIARY, "planCode": PLAN_CODE},
         headers={"User-Agent": "ovh-vps-notifier/1.2"},
@@ -58,55 +95,80 @@ def fetch_statuses() -> dict[str, dict]:
     return result
 
 
-def check_and_notify(zone: str, os_type: str, current: str):
-    """Compare current status to previous and send Telegram alert on change."""
+def check_and_notify(zone: str, os_type: str, current: str, dry_run: bool = False):
+    """Compare current status to previous and send Telegram alert on transition."""
     key = f"{zone}_{os_type}"
     previous = last_status.get(key)
 
     if previous is None:
         # first run — record state, no alert
         last_status[key] = current
+        save_state()
         return
 
     if previous != "available" and current == "available":
-        telegram_notify(
-            f"\u2705 OVH VPS AVAILABLE ({os_type.upper()})\n"
+        with_retry(
+            telegram_notify,
+            f"✅ OVH VPS AVAILABLE ({os_type.upper()})\n"
             f"Plan: {PLAN_CODE}\n"
             f"Zone: {zone}\n"
             f"{os_type}Status: {current}\n"
-            f"https://www.ovhcloud.com/en/vps/configurator/?planCode={PLAN_CODE}"
+            f"https://www.ovhcloud.com/en/vps/configurator/?planCode={PLAN_CODE}",
+            dry_run=dry_run,
         )
 
     if previous == "available" and current != "available":
-        telegram_notify(
-            f"\u274c OVH VPS no longer available ({os_type.upper()})\n"
+        with_retry(
+            telegram_notify,
+            f"❌ OVH VPS no longer available ({os_type.upper()})\n"
             f"Plan: {PLAN_CODE}\n"
             f"Zone: {zone}\n"
-            f"{os_type}Status: {current}"
+            f"{os_type}Status: {current}",
+            dry_run=dry_run,
         )
 
     last_status[key] = current
+    save_state()
 
 
 # ── main loop ─────────────────────────────────────────────────────────────────
 def main():
+    parser = argparse.ArgumentParser(description="OVH VPS availability notifier")
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Poll the API and log alerts without sending Telegram messages",
+    )
+    args = parser.parse_args()
+
+    if not ALERT_LINUX and not ALERT_WINDOWS:
+        sys.exit("ERROR: both ALERT_LINUX and ALERT_WINDOWS are false — nothing to monitor")
+
     alert_types = []
     if ALERT_LINUX:
         alert_types.append("linux")
     if ALERT_WINDOWS:
         alert_types.append("windows")
 
+    load_state()
+
     log(
         f"OVH VPS Notifier started | plan={PLAN_CODE} zones={ZONES} "
         f"interval={CHECK_INTERVAL}s alerting={alert_types}"
+        + (" [DRY RUN]" if args.dry_run else "")
     )
-    telegram_notify(
-        f"\U0001f680 OVH VPS Notifier started\n"
-        f"Plan: {PLAN_CODE}\n"
-        f"Zones: {', '.join(ZONES)}\n"
-        f"Alerting: {', '.join(alert_types)}\n"
-        f"Interval: {CHECK_INTERVAL}s"
-    )
+
+    try:
+        with_retry(
+            telegram_notify,
+            f"\U0001f680 OVH VPS Notifier started\n"
+            f"Plan: {PLAN_CODE}\n"
+            f"Zones: {', '.join(ZONES)}\n"
+            f"Alerting: {', '.join(alert_types)}\n"
+            f"Interval: {CHECK_INTERVAL}s",
+            dry_run=args.dry_run,
+        )
+    except Exception as e:
+        log(f"WARNING: startup Telegram message failed: {e}")
 
     while True:
         try:
@@ -126,10 +188,10 @@ def main():
                 )
 
                 if ALERT_LINUX:
-                    check_and_notify(zone, "linux", info["linuxStatus"] or "unknown")
+                    check_and_notify(zone, "linux", info["linuxStatus"] or "unknown", args.dry_run)
 
                 if ALERT_WINDOWS:
-                    check_and_notify(zone, "windows", info["windowsStatus"] or "unknown")
+                    check_and_notify(zone, "windows", info["windowsStatus"] or "unknown", args.dry_run)
 
         except Exception as e:
             log(f"ERROR: {type(e).__name__}: {e}")

@@ -3,6 +3,7 @@ Description=OVH VPS Availability Notifier
 After=network-online.target
 Wants=network-online.target
 
+# Edit the three paths below to match your deployment directory and user
 [Service]
 Type=simple
 User=root
